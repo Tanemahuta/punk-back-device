@@ -1,12 +1,14 @@
 #ifndef SWITCH_HANDLER_H
 #define SWITCH_HANDLER_H
 
+#define SWITCHES_COUNT 4
+
 #include <Arduino.h>
 #include "Switch.h"
 
 class SwitchHandler {
     public:
-      SwitchHandler(const Switch switches[], int count);
+      SwitchHandler(int pin1, int pin2, int pin3, int pin4);
       ~SwitchHandler();
       void refresh();
       int getPressedCount();
@@ -15,8 +17,7 @@ class SwitchHandler {
       bool wasReleased(int idx);
       bool wasChanged();
     private:
-      const Switch* _switches;
-      int _switchesCount;
+      Switch** _switches;
       int _pressedCount;
       bool _wasChanged;
 };

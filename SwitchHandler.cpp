@@ -1,28 +1,36 @@
 #include "SwitchHandler.h"
 
-SwitchHandler::SwitchHandler(const Switch switches[], int count) {
-  _switches = switches;
-  _switchesCount = count;
+SwitchHandler::SwitchHandler(int pin1, int pin2, int pin3, int pin4) {
+  _switches = new Switch*[4];
+  _switches[0] = new Switch(pin1);
+  _switches[1] = new Switch(pin2);
+  _switches[2] = new Switch(pin3);
+  _switches[3] = new Switch(pin4);
   refresh();
 }
 
 SwitchHandler::~SwitchHandler() {
+  delete _switches[0];
+  delete _switches[1];
+  delete _switches[2];
+  delete _switches[3];
+  delete _switches;
 }
 
 int SwitchHandler::getSwitchesCount() {
-  return _switchesCount;
+  return SWITCHES_COUNT;
 }
 
 void SwitchHandler::refresh() {
   _pressedCount = 0;
   _wasChanged = false;
-  for (int i = 0; i < _switchesCount; i++) {
-    Switch sw = _switches[i];
-    sw.refresh();
-    if (sw.getState()) {
+  for (int i = 0; i < SWITCHES_COUNT; i++) {
+    Switch* sw = _switches[i];
+    sw->refresh();
+    if (sw->getState()) {
       _pressedCount++;
     }
-    _wasChanged |= sw.wasChanged();
+    _wasChanged |= sw->wasChanged();
   }
 }
 
@@ -31,17 +39,17 @@ int SwitchHandler::getPressedCount() {
 }
 
 bool SwitchHandler::isPressed(int idx) {
-  if (idx < _switchesCount) {
-    Switch sw = _switches[idx];
-    return sw.getState();
+  if (idx < SWITCHES_COUNT) {
+    Switch* sw = _switches[idx];
+    return sw->getState();
   }
   return false;
 }
 
 bool SwitchHandler::wasReleased(int idx) {
-  if (idx < _switchesCount) {
-    Switch sw = _switches[idx];
-    return sw.wasReleased();
+  if (idx < SWITCHES_COUNT) {
+    Switch* sw = _switches[idx];
+    return sw->wasReleased();
   }
   return false;
 }

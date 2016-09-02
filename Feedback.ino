@@ -1,25 +1,30 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
-#include <WiFiClient.h>
 #include "LED.h"
 #include "SwitchHandler.h"
 #include "GoogleForms.h"
+#include "WebServer.h"
+#include "SettingsProvider.h"
+
+#define WIFI_TIMEOUT_MILLIS 30*1000
 
 /** LEDs */
 LED ledReady(D0);
 LED ledError(D1);
 
 /** Switches */
-Switch poor(D4);
-Switch fair(D5);
-Switch good(D6);
-Switch excellent(D7);
+SwitchHandler switchHandler(D4,D5,D6,D7);
 
-const Switch switches[] = {poor, fair, good, excellent};
-SwitchHandler switchHandler(switches, 4);
+/** Google forms handler */
+GoogleForms gForms;
 
-WiFiClientSecure wifiClient;
-GoogleForms gForms(wifiClient);
+/** Settings provider for persistent settings */
+SettingsProvider settings;
+
+/**
+ * Configuration webserver
+ */
+WebServer server(&settings);
 
 //const char* deviceName = "feedback-1";
 
@@ -27,52 +32,88 @@ GoogleForms gForms(wifiClient);
 const char* ssid = "Tanemahuta";
 const char* password = "7ykcRytmjs6k";
 
+/*
+const char* ssid = "Namics";
+const char* password = "NamicsSeit1995";
+*/
+
 enum State {
   FEEDBACK, FEEDBACK_ERROR, SERVER
 };
 
 State currentState = FEEDBACK;
 
-/*
-  const char* ssid = "Namics";
-  const char* password = "NamicsSeit1995";
-*/
-
-/** Google form configuration **/
-/*
-  const char* formUrl = "https://docs.google.com/a/namics.com/forms/d/e/1FAIpQLScgbUAViqBmxZab-M3T3rkygjwbnW5FzgvCZoL0gLKtDh6Bzw";
-  const char* formEntry = "entry.74407846";
-  WiFiClientSecure client;
-  GoogleForms forms(client);
-*/
+void startConfigurationServer() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.print("Creating AP ");
+    Serial.print(settings.serverSettings.deviceName);
+    Serial.print(" with password '");
+    Serial.print(settings.serverSettings.password);
+    Serial.println("'");
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(settings.serverSettings.deviceName, settings.serverSettings.password);
+    server.start(WiFi.softAPIP());
+    ledError.blink(200);
+  } else {
+    server.start(WiFi.localIP());
+  }
+}
 
 /**
    Wifi connection method.
 */
 void connectToWifi() {
   Serial.print("Connecting to ");
-  Serial.print(ssid);
+  Serial.print(settings.wifiSettings.ssid);
   Serial.print("...");
-
-  WiFi.begin(ssid, password);
-  ledReady.blink(500);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(100);
+  WiFi.disconnect();
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(settings.wifiSettings.ssid, settings.wifiSettings.password);
+  long start = millis();
+  while (WiFi.status() != WL_CONNECTED &&
+         WiFi.status() != WL_CONNECT_FAILED &&
+         (millis()-start) < WIFI_TIMEOUT_MILLIS) {
+    delay(50);
     ledReady.handle();
   }
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("connected.");
     ledReady.on();
+    currentState = FEEDBACK;
   } else {
-    Serial.println("failed.");
-    ledError.blink(200);
+    if (WiFi.status() == WL_CONNECT_FAILED) {
+      Serial.print("failed after ");
+    } else {
+      Serial.print("timed out after ");
+    }
+    Serial.print((millis()-start));
+    Serial.println("ms.");
+  }
+  startConfigurationServer();
+}
+
+void setupGforms() {
+  gForms.setup(settings.gformsSettings.formUrl, settings.gformsSettings.entry);
+}
+
+void doSetup() {
+  Serial.println("Setting up device.");
+  ledError.off();
+  ledReady.blink(500);
+  connectToWifi();
+  if (currentState == FEEDBACK) {
+    setupGforms();
+    ledError.off();
+    ledReady.on();
   }
 }
 
 void setup() {
   Serial.begin(115200);
+  delay(10);
   Serial.println();
-  connectToWifi();
+  settings.load();
+  doSetup();
 }
 
 bool isServerSetupComboPressed() {
@@ -84,12 +125,13 @@ bool isServerSetupComboPressed() {
 void handleFeedback() {
   switchHandler.refresh();
   if (isServerSetupComboPressed()) {
-    Serial.println("Server setup combo pressed, creating http server");
+    Serial.println("Server setup combo pressed, enabling gforms configuration");
+    server.enableGforms();
     currentState = SERVER;
     ledReady.on();
     ledError.blink(1000);
     return;
-  } else if (switchHandler.getPressedCount() > 1) {
+  } else if (switchHandler.getPressedCount() > 1) {    
     Serial.print("More than one button (");
     Serial.print(switchHandler.getPressedCount());
     Serial.print(": ");
@@ -105,14 +147,22 @@ void handleFeedback() {
   } else {
     for (int i = 0; i < switchHandler.getSwitchesCount(); i++) {
       if (switchHandler.wasReleased(i)) {
+        ledReady.off();
         Serial.print("Found feedback button ");
         Serial.print(i);
         Serial.println(" to be released, sending feedback.");
-        gForms.sendFeedback(i);
+        if (gForms.sendFeedback(i)) {
+          ledReady.blinkBlocking(250, 2);
+          ledReady.on();
+        } else {
+          ledReady.off();          
+          ledError.blinkBlocking(100, 5);
+          ledReady.on();          
+        }
       }
     }
   }
-  delay(100);
+  delay(10);
 }
 
 void handleFeedbackError() {
@@ -125,17 +175,22 @@ void handleFeedbackError() {
   delay(100);
 }
 
-void handleServer() {
-
-}
-
 void loop() {
   switch (currentState) {
     case FEEDBACK: handleFeedback(); break;
     case FEEDBACK_ERROR: handleFeedbackError(); break;
-    case SERVER: handleServer(); break;
+    case SERVER:
+      if (server.isDone()) {
+        Serial.println("Switched back to feedback mode.");
+        setupGforms();
+        currentState = FEEDBACK_ERROR;
+        return;
+      }
+    break;
   }
   ledReady.handle();
   ledError.handle();
+  server.handleClient();           
+  delay(10);
 }
 

@@ -12,10 +12,12 @@ class Switch {
     bool getState();
     bool wasReleased();
   private:
-    int _pin;
-    bool _state;
-    bool _changed;
-    bool _released;
+    int pin_;
+    long lastReadHigh_;
+    long lastReadLow_;
+    int state_;
+    bool changed_;
+    bool released_;
 };
 
 

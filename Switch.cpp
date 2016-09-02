@@ -1,36 +1,58 @@
 #include "Switch.h"
 
-Switch::Switch(int pin) {
-  _pin = pin;
+#define DEBOUNCE_MILLIS 50
+
+Switch::Switch(int pin) : pin_(pin), released_(false), changed_(false), state_(1) {
   pinMode(pin, INPUT_PULLUP);
+  Serial.print("Initialized Switch for ");
+  Serial.println(pin);
 }
 
 Switch::~Switch() {
-  // Nothing to do  
+  // Nothing to do
 }
 
 void Switch::refresh() {
-  bool state = !digitalRead(_pin);
-  if (_state != state) {
-    _changed = true;
-    _released = _state && !state;
-    Serial.println(state ? "Button pressed." : "Button released.");
+
+  int curState = digitalRead(pin_);
+  if (curState == HIGH) {
+    lastReadHigh_ = millis();
+  } else if (curState == LOW) {
+    lastReadLow_ = millis();
   } else {
-    _released = false;
-    _changed = false;
+    return; // Not being able to read?
   }
-  _state = state;
+
+  long timingDifference = (lastReadHigh_ - lastReadLow_);
+  if (!(timingDifference >= DEBOUNCE_MILLIS || timingDifference <= -DEBOUNCE_MILLIS)) {
+    // We have not debounced anything, so let's not do anything
+    return;
+  }
+  // Now check the debounced state
+  if (state_ != curState) {
+    // There was a change
+    changed_ = true;
+    released_ = (state_ == LOW) && (curState == HIGH);
+    Serial.print("Button ");
+    Serial.print(pin_);
+    Serial.print(" was ");
+    Serial.println(released_ ? "released" : "pressed");
+  } else {
+    released_ = false;
+    changed_ = false;
+  }
+  state_ = curState;
 }
 
 bool Switch::wasReleased() {
-  return _released;
+  return released_;
 }
 
 bool Switch::wasChanged() {
-  return _changed;
+  return changed_;
 }
 
 bool Switch::getState() {
-  return _state;
+  return (this->state_ == LOW);
 }
 

@@ -6,7 +6,7 @@
 
 class GoogleForms {
   public:
-        GoogleForms(WiFiClientSecure client);
+        GoogleForms();
         ~GoogleForms();
         boolean setup(String url, String entry);
         boolean sendFeedback(int feedback);
@@ -14,7 +14,8 @@ class GoogleForms {
         char* _host;
         char* _path;
         char* _entry;
-        WiFiClientSecure _client;
+        WiFiClientSecure* _client;
+        boolean findEntry();
 
 };
 
