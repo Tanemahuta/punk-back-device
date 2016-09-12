@@ -1,7 +1,7 @@
 include <buttons.scad>;
 
-difference() {
-   buttonBase_v2();
+translate([35*3/2,0,0])  difference() {
+   buttonBase();
    linear_extrude(height=1) {
       eyes();
       translate([-9, -5,0]) square(size=[18,2]);

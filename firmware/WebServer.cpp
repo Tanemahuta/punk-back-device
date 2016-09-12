@@ -1,6 +1,7 @@
 #include "WebServer.h"
 
 #include "HTML_CSS.h"
+#include "Logging.h"
 
 #define CALL_STRUCT(methodName) \
   struct Call_##methodName {\
@@ -8,8 +9,6 @@
     Call_##methodName(WebServer & src) : _src(src) {\
     }\
     void operator()() const {\
-      Serial.print("Serving ");\
-      Serial.println(#methodName);\
       _src.methodName();\
     }\
   }
@@ -42,15 +41,17 @@ void WebServer::enableGforms() {
   _enableGforms = true;
 }
 
+void WebServer::disableGforms() {
+  _enableGforms = false;
+  _done = true;
+}
+
 WebServer::~WebServer() {
   delete _server;
 }
 void WebServer::start(IPAddress ip) {
-  Serial.print("Server started @ ");
-  Serial.println(ip);
   if (!MDNS.begin(_settingsProvider->serverSettings.deviceName, ip)) {
-    Serial.print("Could not start mDNS server: ");
-    Serial.println(_settingsProvider->serverSettings.deviceName);
+    Log_Error(String("Could not start mDNS server: ")+_settingsProvider->serverSettings.deviceName);
   } else {
     MDNS.addService("http", "tcp", 80);
   }
@@ -198,8 +199,7 @@ void WebServer::wifiPageHandler()
   if (_server->hasArg("ssid")) {
     String ssid = _server->arg("ssid");
     ssid.toCharArray(_settingsProvider->wifiSettings.ssid, 64);
-    Serial.print("Configured WiFi for ssid ");
-    Serial.println(ssid);
+    Log_Info(String("Configured WiFi for ssid ")+ssid);
     String pass = _server->arg("password");
     pass.toCharArray(_settingsProvider->wifiSettings.password, 64);
     _settingsProvider->save();
@@ -255,8 +255,6 @@ void WebServer::gformsPageHandler()
   if (_server->hasArg("formUrl")) {
     String ssid = _server->arg("formUrl");
     ssid.toCharArray(_settingsProvider->gformsSettings.formUrl, 128);
-    String entry = _server->arg("entry");
-    entry.toCharArray(_settingsProvider->gformsSettings.entry, 128);
     _settingsProvider->save();
     redirectToStart(_server, "Google forms settings saved.");
     return;
@@ -267,9 +265,6 @@ void WebServer::gformsPageHandler()
   response += "<form method=\"post\">";
   appendLabel(response, "formsUrl", "Google forms URL:");
   appendInput(response, "text", "formUrl", "formUrl", _settingsProvider->gformsSettings.formUrl);
-  response += "<br />";
-  appendLabel(response, "entry", "Form entry (fallback in case parsing does not work):");
-  appendInput(response, "text", "entry", "entry", _settingsProvider->gformsSettings.entry);
   response += "<br />";
   appendInput(response, "button\" onclick=\"location.href = '/'\"", "back", "back", "Back");
   appendInput(response, "submit", "save", "save", "Save");

@@ -19,6 +19,7 @@ class WebServer {
     void feedbackModeHandler();
     void cssHandler();
     void enableGforms();
+    void disableGforms();
     void handleNotFound();
   private:
     bool _done;

@@ -4,24 +4,25 @@ module retainer(t=2) {
     cube([t,1,1]);
     translate([0,0,1]) cube([t, 3, 1]);
 }
-module buttonBase_v1(d=30, h=4) {
-    cylinder(h=h,d=d);
-    translate([0,0,h]) cylinder(d1=8, d2=4.5, h=2);
-    translate([-d/2+1,-1,h]) rotate([0,0,90]) retainer();
-    translate([d/2-1,1,h]) rotate([0,0,270]) retainer();
-    translate([-1,d/2-1,h]) retainer();
-    translate([1,-d/2+1,h]) rotate([0,0,180]) retainer();
-}
-module buttonBase_v2(d=30, h=4) {
-    cylinder(h=h,d=d);
-    translate([0,0,h]) cylinder(d1=8, d2=4.5, h=2);
-    translate([0,0,h]) difference() {
-       union() {
-         cylinder(h=1, d=d);
-         translate([0,0,1]) cylinder(h=1, d=d+2);
-       }
-       cylinder(h=2, d=d-2);
+module buttonBase(d=30, h=5,s_h=1,s_w=2) {
+    difference() {
+        union() {
+            color("black") intersection() {
+                cylinder(h=h+2, d=d+s_h*2);
+                union() {
+                    for (i = [0:1]) {
+                        r = d/2+s_h;
+                        rotate([0,0,i*90]) translate([-s_w/2,-r,0]) cube([2,r*2,h+2]);
+                    }
+                }
+            }
+            color("red") cylinder(h=h,d=d);
+            color("blue") translate([0,0,h]) cylinder(h=2, d=d+s_h*2);            
+        }
+
+        color("blue") translate([0,0,h]) cylinder(h=3, d=d-2);
     }
+    color("green") translate([0,0,h]) cylinder(d1=8, d2=4.5, h=2);
 }
 
 module eyes() {

@@ -1,11 +1,10 @@
 #include "Switch.h"
-
+#include "Logging.h"
 #define DEBOUNCE_MILLIS 50
 
 Switch::Switch(int pin) : pin_(pin), released_(false), changed_(false), state_(1) {
   pinMode(pin, INPUT_PULLUP);
-  Serial.print("Initialized Switch for ");
-  Serial.println(pin);
+  Log_Debug(String("Initialized Switch for ")+pin);
 }
 
 Switch::~Switch() {
@@ -33,10 +32,7 @@ void Switch::refresh() {
     // There was a change
     changed_ = true;
     released_ = (state_ == LOW) && (curState == HIGH);
-    Serial.print("Button ");
-    Serial.print(pin_);
-    Serial.print(" was ");
-    Serial.println(released_ ? "released" : "pressed");
+    Log_Debug(String("Button ")+pin_+" was "+(released_ ? "released" : "pressed"));
   } else {
     released_ = false;
     changed_ = false;

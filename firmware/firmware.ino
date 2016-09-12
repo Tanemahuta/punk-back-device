@@ -5,6 +5,7 @@
 #include "GoogleForms.h"
 #include "WebServer.h"
 #include "SettingsProvider.h"
+#include "Logging.h"
 
 #define WIFI_TIMEOUT_MILLIS 30*1000
 
@@ -13,7 +14,7 @@ LED ledReady(D0);
 LED ledError(D1);
 
 /** Switches */
-SwitchHandler switchHandler(D4,D5,D6,D7);
+SwitchHandler switchHandler(D4, D5, D6, D7);
 
 /** Google forms handler */
 GoogleForms gForms;
@@ -22,98 +23,93 @@ GoogleForms gForms;
 SettingsProvider settings;
 
 /**
- * Configuration webserver
- */
-WebServer server(&settings);
-
-//const char* deviceName = "feedback-1";
-
-/** Wifi configuration */
-const char* ssid = "Tanemahuta";
-const char* password = "7ykcRytmjs6k";
-
-/*
-const char* ssid = "Namics";
-const char* password = "NamicsSeit1995";
+   Configuration webserver
 */
+WebServer server(&settings);
 
 enum State {
   FEEDBACK, FEEDBACK_ERROR, SERVER
 };
 
-State currentState = FEEDBACK;
+State currentState = SERVER;
 
-void startConfigurationServer() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.print("Creating AP ");
-    Serial.print(settings.serverSettings.deviceName);
-    Serial.print(" with password '");
-    Serial.print(settings.serverSettings.password);
-    Serial.println("'");
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(settings.serverSettings.deviceName, settings.serverSettings.password);
-    server.start(WiFi.softAPIP());
-    ledError.blink(200);
-  } else {
-    server.start(WiFi.localIP());
-  }
+void setupSoftAP() {
+  Log_Info(String("Creating AP ") + settings.serverSettings.deviceName + " width password " + settings.serverSettings.password);
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(settings.serverSettings.deviceName, settings.serverSettings.password);
+  ledReady.off();
+  ledError.blink(200);
+}
+
+void startConfigurationServer(IPAddress ip) {
+  Log_Info(String("Created configuration server."));
+  server.start(ip);
 }
 
 /**
    Wifi connection method.
 */
-void connectToWifi() {
-  Serial.print("Connecting to ");
-  Serial.print(settings.wifiSettings.ssid);
-  Serial.print("...");
+bool connectToWifi() {
+  Log_Info(String("Connecting to ")+settings.wifiSettings.ssid+" ...");
   WiFi.disconnect();
   WiFi.mode(WIFI_STA);
   WiFi.begin(settings.wifiSettings.ssid, settings.wifiSettings.password);
   long start = millis();
   while (WiFi.status() != WL_CONNECTED &&
          WiFi.status() != WL_CONNECT_FAILED &&
-         (millis()-start) < WIFI_TIMEOUT_MILLIS) {
+         (millis() - start) < WIFI_TIMEOUT_MILLIS) {
     delay(50);
     ledReady.handle();
   }
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("connected.");
+    Log_Info(String("Connected to WiFi."));
     ledReady.on();
-    currentState = FEEDBACK;
+    return true;    
   } else {
     if (WiFi.status() == WL_CONNECT_FAILED) {
-      Serial.print("failed after ");
+      Log_Error(String("Could not connect to WiFi."));
     } else {
-      Serial.print("timed out after ");
+      Log_Error(String("Connection to WiFi timed out."));
     }
-    Serial.print((millis()-start));
-    Serial.println("ms.");
+    return false;
   }
-  startConfigurationServer();
 }
 
 void setupGforms() {
-  gForms.setup(settings.gformsSettings.formUrl, settings.gformsSettings.entry);
-}
-
-void doSetup() {
-  Serial.println("Setting up device.");
+  ledReady.off();
+  gForms.setup(settings.gformsSettings.formUrl);
+  ledReady.on();
   ledError.off();
-  ledReady.blink(500);
-  connectToWifi();
-  if (currentState == FEEDBACK) {
-    setupGforms();
-    ledError.off();
-    ledReady.on();
-  }
 }
 
 void setup() {
-  Serial.begin(115200);
+  Log.Init(LOG_LEVEL_DEBUG, 115200);
   delay(10);
-  Serial.println();
-  settings.load();
-  doSetup();
+  if (!settings.load()) {
+    Log_Error(String("Could not load settings, switching to configuration mode."));
+    setupSoftAP();
+    startConfigurationServer(WiFi.softAPIP());
+  } else {
+
+    Log_Info(String("Setting up feedback device."));
+    ledError.off();
+    ledReady.blink(500);
+    IPAddress ip;
+    if (connectToWifi()) {
+      setupGforms();
+      ledError.off();
+      ledReady.on();
+      currentState = FEEDBACK;
+      ip = WiFi.localIP();
+    } else {
+      ledError.blink(200);
+      ledReady.off();
+      Log_Error(String("Could not connect to WiFi, setting up soft AP."));
+      setupSoftAP();
+      ip = WiFi.softAPIP();
+    }
+    startConfigurationServer(ip);
+  }
 }
 
 bool isServerSetupComboPressed() {
@@ -125,13 +121,13 @@ bool isServerSetupComboPressed() {
 void handleFeedback() {
   switchHandler.refresh();
   if (isServerSetupComboPressed()) {
-    Serial.println("Server setup combo pressed, enabling gforms configuration");
+    Log_Info(String("Server setup combo pressed, enabling gforms configuration"));
     server.enableGforms();
     currentState = SERVER;
     ledReady.on();
     ledError.blink(1000);
     return;
-  } else if (switchHandler.getPressedCount() > 1) {    
+  } else if (switchHandler.getPressedCount() > 1) {
     Serial.print("More than one button (");
     Serial.print(switchHandler.getPressedCount());
     Serial.print(": ");
@@ -139,7 +135,7 @@ void handleFeedback() {
       if (switchHandler.isPressed(i)) {
         Serial.print(i);
       }
-    }    
+    }
     Serial.println(") pressed, waiting for all to be released.");
     currentState = FEEDBACK_ERROR;
     ledError.blink(200);
@@ -155,9 +151,9 @@ void handleFeedback() {
           ledReady.blinkBlocking(250, 2);
           ledReady.on();
         } else {
-          ledReady.off();          
+          ledReady.off();
           ledError.blinkBlocking(100, 5);
-          ledReady.on();          
+          ledReady.on();
         }
       }
     }
@@ -180,17 +176,18 @@ void loop() {
     case FEEDBACK: handleFeedback(); break;
     case FEEDBACK_ERROR: handleFeedbackError(); break;
     case SERVER:
+      switchHandler.refresh();
       if (server.isDone()) {
         Serial.println("Switched back to feedback mode.");
         setupGforms();
         currentState = FEEDBACK_ERROR;
         return;
       }
-    break;
+      break;
   }
   ledReady.handle();
   ledError.handle();
-  server.handleClient();           
+  server.handleClient();
   delay(10);
 }
 

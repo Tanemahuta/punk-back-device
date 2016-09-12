@@ -1,5 +1,7 @@
 #include "GoogleForms.h"
 
+#include "Logging.h"
+
 #define LE "\r\n"
 #define LINE(str) str+LE
 #define POST(url) LINE(String("POST ") + url + " HTTP/1.1")
@@ -13,48 +15,41 @@ GoogleForms::~GoogleForms() {
   delete _client;
 }
        
-boolean GoogleForms::setup(String url, String entry) {
+boolean GoogleForms::setup(String url) {
   int curIndex = url.indexOf("https://");
   if (curIndex != 0) {
-    Serial.print("Url does not start with https:// : ");
-    Serial.println(url);
+    Log_Error(String("Url does not start with https://: ")+url);
     return false;
   }
   curIndex = url.indexOf("/", 8);
   if (curIndex <9) {
-    Serial.print("Url does not contain a valid path: ");
-    Serial.println(url);
+    Log_Error(String("Url does not contain a valid path: ")+url);
     return false;    
   }
   url.substring(8, curIndex).toCharArray(_host, 128);
-  Serial.print("Setup Gforms host: ");
-  Serial.println(_host);
+  Log_Debug(String("Using forms host: ")+_host);
   int lastIndex = url.indexOf("/viewform", curIndex);
   if (lastIndex < curIndex) {
     lastIndex -= url.length();
   }
   url.substring(curIndex, lastIndex).toCharArray(_path, 128);
-  Serial.print("Setup Gforms path: ");
-  Serial.println(_path);
+  Log_Debug(String("Setup Gforms path: ")+_path);
   if (!findEntry()) {
-    entry.toCharArray(_entry, 128);
+    Log_Error(String("Could not find entry for the provided url: ")+url);
   }  
-  Serial.print("Setup Gforms entry: ");
-  Serial.println(_entry);
+  Log_Info(String("Found gform entry: ")+_entry);
   return true;
 }
 
 boolean GoogleForms::findEntry() {
     if (_host == NULL || _path == NULL) {
-    Serial.println("Google form not setup!");
+    Log_Error(String("Google form not setup!"));
     return false;
   }
   
-  Serial.print("Connecting to ");
-  Serial.print(_host);
-  Serial.print("...");
+  Log_Debug(String("Connecting to ")+_host+" ...");
   if (!_client->connect(_host, 443)) {
-    Serial.println("FAILED!");
+    Log_Error(String("Connection to ")+_host+"failed!");
     return false;
   }
   
@@ -65,16 +60,15 @@ boolean GoogleForms::findEntry() {
                    HEADER("Connection", "close") +
                    HEADER("Accept-Type", "text/html") + LE;
   
-  Serial.println("Sending request:");
-  Serial.println(request);
+  Log_Debug(String("Sending request: ")+request);
   _client->print(request);
-  Serial.println("Request sent.");
+  Log_Info(String("Google form 'viewform' request sent."));
 
   String response = _client->readStringUntil('\n');
   bool ok = response.indexOf("HTTP/1.1 200 OK") == 0;
 
   if (ok) {
-    Serial.println("Received 200 response.");
+    Log_Info(String("Received 200 response."));
     String entryName = "";
     do {
       String tmp = _client->readStringUntil('"');
@@ -84,20 +78,16 @@ boolean GoogleForms::findEntry() {
       }
     } while (_client->connected());
     if (entryName.length() == 0) {
-      Serial.println();
-      Serial.println("Could not find input entry.");
+      Log_Error(String("Could not find first entry field for the form: ")+_path);
       _client->stop();
       return false;
     }
-    Serial.println();
-    Serial.print("Found entry: ");
-    Serial.println(entryName);
+    Log_Info(String("Found entry for the form ")+_path+" :"+entryName);
     entryName.toCharArray(_entry, 128);
     _client->stop();
     return true;
   } else {
-    Serial.print("Received errornous response: ");
-    Serial.println(response);
+    Log_Error(String("Received a non 200 response:")+response);
     _client->stop();
     return false;
   }
@@ -106,15 +96,12 @@ boolean GoogleForms::findEntry() {
 boolean GoogleForms::sendFeedback(int value) {
 
   if (_host == NULL || _path == NULL || _entry == NULL) {
-    Serial.println("Google form not setup!");
+    Log_Error(String("Google form is not setup."));
     return false;
   }
-  
-  Serial.print("Connecting to ");
-  Serial.print(_host);
-  Serial.print("...");
+  Log_Debug(String("Connecting to ")+_host+" ...");
   if (!_client->connect(_host, 443)) {
-    Serial.println("FAILED!");
+    Log_Error(String("Could not connect to host ")+_host);
     return false;
   }
   
@@ -128,21 +115,19 @@ boolean GoogleForms::sendFeedback(int value) {
                    HEADER("Content-Length", String(payload.length())) + LE +
                    payload;
   
-  Serial.println("Sending request:");
-  Serial.println(request);
+  Log_Debug(String("Sending request ")+request);
   _client->print(request);
-  Serial.println("Request sent.");
+  Log_Info(String("Google form 'formResponse' request sent."));
 
   String response = _client->readStringUntil('\n');
   bool ok = response.indexOf("HTTP/1.1 200 OK") == 0;
 
   if (ok) {
-    Serial.println("Received 200 response.");
+    Log_Info(String("Received 200 response."));
     _client->stop();
     return true;
   } else {
-    Serial.print("Received errornous response: ");
-    Serial.println(response);
+    Log_Info(String("Received a non 200 response: ")+response);
     _client->stop();
     return false;
   }
